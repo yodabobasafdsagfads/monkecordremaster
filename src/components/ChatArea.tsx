@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Hash } from 'lucide-react';
-import { supabase, Message, Channel, Profile } from '../lib/supabase';
+import { supabase, Message, Channel } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ChatAreaProps {
@@ -14,6 +14,7 @@ export default function ChatArea({ channel }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
+  // Load initial messages + set up realtime listener
   useEffect(() => {
     if (!channel) {
       setMessages([]);
@@ -32,8 +33,20 @@ export default function ChatArea({ channel }: ChatAreaProps) {
           table: 'messages',
           filter: `channel_id=eq.${channel.id}`,
         },
-        (payload) => {
-          loadMessages();
+        async (payload) => {
+          const newMessage = payload.new as Message;
+
+          // fetch sender's profile for display
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', newMessage.user_id)
+            .single();
+
+          setMessages((prev) => [
+            ...prev,
+            { ...newMessage, profiles: profileData },
+          ]);
         }
       )
       .subscribe();
@@ -43,6 +56,7 @@ export default function ChatArea({ channel }: ChatAreaProps) {
     };
   }, [channel]);
 
+  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -108,11 +122,13 @@ export default function ChatArea({ channel }: ChatAreaProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-slate-700">
+      {/* Header */}
       <div className="h-12 px-4 flex items-center border-b border-slate-600 shadow-md">
         <Hash className="w-5 h-5 text-slate-400 mr-2" />
         <h3 className="font-semibold text-white">{channel.name}</h3>
       </div>
 
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
           <div key={message.id} className="flex gap-3">
@@ -122,7 +138,9 @@ export default function ChatArea({ channel }: ChatAreaProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="font-semibold text-white">
-                  {message.profiles?.display_name || message.profiles?.username || 'Unknown'}
+                  {message.profiles?.display_name ||
+                    message.profiles?.username ||
+                    'Unknown'}
                 </span>
                 {message.profiles?.is_owner && (
                   <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded">
@@ -140,6 +158,7 @@ export default function ChatArea({ channel }: ChatAreaProps) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input */}
       <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-600">
         <div className="flex gap-2">
           <input
